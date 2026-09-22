@@ -27,8 +27,10 @@ describe("buildTrendyolProductPayload (Trendyol'a gönderilecek gövde)", () => 
     expect(buildTrendyolProductPayload(base).items[0].description).toBe("Keten Elbise");
     expect(buildTrendyolProductPayload({ ...base, description: "El yapımı" }).items[0].description).toBe("El yapımı");
   });
-  it("görsel verilmezse boş dizi, verilirse tek elemanlı dizi olur", () => {
+  it("görsel verilmezse boş dizi; birden fazla görsel sırayla eşlenir", () => {
     expect(buildTrendyolProductPayload(base).items[0].images).toEqual([]);
-    expect(buildTrendyolProductPayload({ ...base, imageUrl: "https://x/y.jpg" }).items[0].images).toEqual([{ url: "https://x/y.jpg" }]);
+    expect(buildTrendyolProductPayload({ ...base, imageUrls: ["https://x/a.jpg"] }).items[0].images).toEqual([{ url: "https://x/a.jpg" }]);
+    expect(buildTrendyolProductPayload({ ...base, imageUrls: ["https://x/a.jpg", "https://x/b.jpg"] }).items[0].images)
+      .toEqual([{ url: "https://x/a.jpg" }, { url: "https://x/b.jpg" }]);
   });
 });

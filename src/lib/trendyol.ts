@@ -22,7 +22,7 @@ export type TrendyolProductInput = {
   stockCode: string;
   price: number;
   description?: string;
-  imageUrl?: string;
+  imageUrls?: string[];
 };
 
 export class TrendyolApiError extends Error {}
@@ -51,7 +51,7 @@ export function buildTrendyolProductPayload(product: TrendyolProductInput) {
         salePrice: product.price,
         vatRate: 20,
         cargoCompanyId: 10,   // Trendyol Express varsayılanı — satıcı panelinde farklıysa güncellenmeli
-        images: product.imageUrl ? [{ url: product.imageUrl }] : [],
+        images: (product.imageUrls || []).map((url) => ({ url })),
         attributes: [],
       },
     ],

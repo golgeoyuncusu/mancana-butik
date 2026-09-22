@@ -30,7 +30,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         stockCode: product.trendyol_barcode,
         price: Number(product.price) || 0,
         description: product.description || undefined,
-        imageUrl: product.image_url || undefined,
+        imageUrls: Array.isArray(product.image_urls) ? product.image_urls : [],
       },
     );
     await sql`update products set trendyol_synced_at = now(), trendyol_sync_error = null where id = ${id}`;

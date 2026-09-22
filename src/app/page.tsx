@@ -43,15 +43,13 @@ const APP_HTML = `
           <div class="field"><label>SKU / stok kodu (opsiyonel)</label><input type="text" id="f-p-sku"></div>
           <div class="field"><label>Açıklama (opsiyonel)</label><textarea id="f-p-desc" rows="2"></textarea></div>
           <div class="field">
-            <label>Ürün fotoğrafı (opsiyonel)</label>
+            <label>Ürün fotoğrafları (opsiyonel, birden fazla eklenebilir)</label>
+            <div class="img-picker-grid" id="f-p-image-grid"></div>
             <div class="img-picker">
-              <img id="f-p-image-preview" class="img-picker-preview" alt="" hidden>
-              <button type="button" class="btn ghost small" id="f-p-image-pick-btn">Fotoğraf Seç</button>
-              <button type="button" class="btn ghost small danger" id="f-p-image-clear-btn" hidden>Kaldır</button>
+              <button type="button" class="btn ghost small" id="f-p-image-pick-btn">+ Fotoğraf Ekle</button>
               <span class="img-picker-status" id="f-p-image-status"></span>
             </div>
-            <input type="file" id="f-p-image-file" accept="image/*" hidden>
-            <input type="hidden" id="f-p-image">
+            <input type="file" id="f-p-image-file" accept="image/*" multiple hidden>
           </div>
           <details class="ty-fields">
             <summary>Trendyol bilgileri (yüklemek için gerekli, opsiyonel)</summary>
@@ -136,6 +134,11 @@ const APP_HTML = `
   </nav>
 
   <div class="toast" id="toast"></div>
+
+  <div class="gallery-modal" id="galleryModal" hidden>
+    <button type="button" class="gallery-close" id="galleryCloseBtn" aria-label="Kapat">×</button>
+    <div class="gallery-images" id="galleryImages"></div>
+  </div>
 </div>
 `;
 
@@ -204,7 +207,7 @@ function mountApp() {
   // -------- types & state --------
   type Product = {
     id: number; name: string; category: string; sku: string; price: number; stockQuantity: number;
-    description: string; imageUrl: string; trendyolBarcode: string; trendyolCategoryId: number | null;
+    description: string; imageUrls: string[]; trendyolBarcode: string; trendyolCategoryId: number | null;
     trendyolBrandId: number | null; trendyolSyncedAt: string; trendyolSyncError: string;
   };
   type Sale = { id: number; productId: number | null; productName: string; quantity: number; unitPrice: number; total: number; paymentMethod: string; note: string; soldAt: string; createdAt: string };
@@ -214,7 +217,7 @@ function mountApp() {
     return {
       id: r.id as number, name: r.name as string, category: (r.category as string) || "Diğer", sku: (r.sku as string) || "",
       price: Number(r.price) || 0, stockQuantity: Number(r.stock_quantity) || 0, description: (r.description as string) || "",
-      imageUrl: (r.image_url as string) || "", trendyolBarcode: (r.trendyol_barcode as string) || "",
+      imageUrls: Array.isArray(r.image_urls) ? (r.image_urls as string[]) : [], trendyolBarcode: (r.trendyol_barcode as string) || "",
       trendyolCategoryId: (r.trendyol_category_id as number) ?? null, trendyolBrandId: (r.trendyol_brand_id as number) ?? null,
       trendyolSyncedAt: String(r.trendyol_synced_at || ""), trendyolSyncError: (r.trendyol_sync_error as string) || "",
     };
@@ -299,9 +302,15 @@ function mountApp() {
     if (!sorted.length) { el.innerHTML = "<p class=\"empty-note\">Henüz ürün eklenmedi.</p>"; return; }
     el.innerHTML = sorted.map((p) => {
       const low = p.stockQuantity <= 0;
+      const first = p.imageUrls[0];
+      const more = p.imageUrls.length - 1;
+      const media = first
+        ? "<button type=\"button\" class=\"product-img-btn\" data-open-gallery=\"" + p.id + "\" aria-label=\"" + escapeHtml(p.name) + " fotoğrafları\">" +
+          "<img class=\"product-img\" src=\"" + escapeHtml(first) + "\" alt=\"\">" +
+          (more > 0 ? "<span class=\"product-img-more\">+" + more + "</span>" : "") + "</button>"
+        : "";
       return "<div class=\"list-item\"><div class=\"li-top\">" +
-        "<div class=\"li-media\">" +
-        (p.imageUrl ? "<img class=\"product-img\" src=\"" + escapeHtml(p.imageUrl) + "\" alt=\"\">" : "") +
+        "<div class=\"li-media\">" + media +
         "<div><div class=\"li-title\">" + escapeHtml(p.name) + "</div>" +
         "<div class=\"li-sub\">" + escapeHtml(p.category) + " · " + money(p.price) + " · " + p.stockQuantity + " adet stokta" + (p.sku ? " · " + escapeHtml(p.sku) : "") + "</div>" +
         (p.trendyolSyncError ? "<div class=\"li-sub\" style=\"color:var(--rust)\">" + escapeHtml(p.trendyolSyncError) + "</div>" : "") +
@@ -314,33 +323,50 @@ function mountApp() {
         "</div></div>";
     }).join("");
   }
-  // Ürün fotoğrafı: telefondan seçilir/çekilir, hemen Vercel Blob'a yüklenir ve genel erişimli URL'si gizli alana
-  // yazılır — kullanıcı bir link girmez, yalnızca dosyayı seçer.
-  function setProductImagePreview(url: string) {
-    const img = document.getElementById("f-p-image-preview") as HTMLImageElement;
-    const clearBtn = document.getElementById("f-p-image-clear-btn") as HTMLElement;
-    (document.getElementById("f-p-image") as HTMLInputElement).value = url;
-    if (url) { img.src = url; img.hidden = false; clearBtn.hidden = false; }
-    else { img.src = ""; img.hidden = true; clearBtn.hidden = true; }
+  function openGallery(id: number) {
+    const p = productsData.find((x) => x.id === id);
+    if (!p || !p.imageUrls.length) return;
+    const el = document.getElementById("galleryImages")!;
+    el.innerHTML = p.imageUrls.map((u) => "<img src=\"" + escapeHtml(u) + "\" alt=\"" + escapeHtml(p.name) + "\">").join("");
+    (document.getElementById("galleryModal") as HTMLElement).hidden = false;
   }
-  async function pickAndUploadProductImage() {
+  function closeGallery() {
+    (document.getElementById("galleryModal") as HTMLElement).hidden = true;
+  }
+
+  // Ürün fotoğrafları: telefondan seçilir/çekilir (birden fazla), her biri hemen Vercel Blob'a yüklenir. Form
+  // içindeyken çalışma listesi formImageUrls'te tutulur; Kaydet'e basınca ürüne bu liste yazılır.
+  let formImageUrls: string[] = [];
+  function renderImagePickerGrid() {
+    const grid = document.getElementById("f-p-image-grid")!;
+    grid.innerHTML = formImageUrls.map((url, i) =>
+      "<div class=\"img-picker-item\"><img src=\"" + escapeHtml(url) + "\" alt=\"\">" +
+      "<button type=\"button\" class=\"img-picker-remove\" data-remove-img=\"" + i + "\" aria-label=\"Fotoğrafı kaldır\">×</button></div>"
+    ).join("");
+  }
+  async function pickAndUploadProductImages() {
     const fileInput = document.getElementById("f-p-image-file") as HTMLInputElement;
-    const file = fileInput.files?.[0];
-    if (!file) return;
+    const files = Array.from(fileInput.files || []);
+    if (!files.length) return;
     const statusEl = document.getElementById("f-p-image-status") as HTMLElement;
-    statusEl.textContent = "Yükleniyor…";
-    try {
-      const res = await fetch("/api/upload", { method: "POST", headers: { "Content-Type": file.type }, body: file });
-      if (!res.ok) { const b = await res.json().catch(() => null); throw new Error(b?.error || "Yüklenemedi."); }
-      const { url } = await res.json();
-      setProductImagePreview(url);
-      statusEl.textContent = "";
-    } catch (e) {
-      statusEl.textContent = "";
-      showToast(e instanceof Error ? e.message : "Fotoğraf yüklenemedi.");
-    } finally {
-      fileInput.value = "";
+    for (const file of files) {
+      statusEl.textContent = "Yükleniyor… (" + (formImageUrls.length + 1) + ")";
+      try {
+        const res = await fetch("/api/upload", { method: "POST", headers: { "Content-Type": file.type }, body: file });
+        if (!res.ok) { const b = await res.json().catch(() => null); throw new Error(b?.error || "Yüklenemedi."); }
+        const { url } = await res.json();
+        formImageUrls.push(url);
+        renderImagePickerGrid();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Fotoğraf yüklenemedi.");
+      }
     }
+    statusEl.textContent = "";
+    fileInput.value = "";
+  }
+  function removeFormImage(index: number) {
+    formImageUrls.splice(index, 1);
+    renderImagePickerGrid();
   }
   function openProductForm(id: number | null) {
     editingProduct = id;
@@ -351,7 +377,8 @@ function mountApp() {
     (document.getElementById("f-p-stock") as HTMLInputElement).value = p ? String(p.stockQuantity) : "0";
     (document.getElementById("f-p-sku") as HTMLInputElement).value = p ? p.sku : "";
     (document.getElementById("f-p-desc") as HTMLTextAreaElement).value = p ? p.description : "";
-    setProductImagePreview(p ? p.imageUrl : "");
+    formImageUrls = p ? p.imageUrls.slice() : [];
+    renderImagePickerGrid();
     (document.getElementById("f-p-ty-barcode") as HTMLInputElement).value = p ? p.trendyolBarcode : "";
     (document.getElementById("f-p-ty-category") as HTMLInputElement).value = p?.trendyolCategoryId ? String(p.trendyolCategoryId) : "";
     (document.getElementById("f-p-ty-brand") as HTMLInputElement).value = p?.trendyolBrandId ? String(p.trendyolBrandId) : "";
@@ -367,7 +394,7 @@ function mountApp() {
       stockQuantity: Number((document.getElementById("f-p-stock") as HTMLInputElement).value) || 0,
       sku: (document.getElementById("f-p-sku") as HTMLInputElement).value.trim(),
       description: (document.getElementById("f-p-desc") as HTMLTextAreaElement).value.trim(),
-      imageUrl: (document.getElementById("f-p-image") as HTMLInputElement).value.trim(),
+      imageUrls: formImageUrls,
       trendyolBarcode: (document.getElementById("f-p-ty-barcode") as HTMLInputElement).value.trim() || null,
       trendyolCategoryId: Number((document.getElementById("f-p-ty-category") as HTMLInputElement).value) || null,
       trendyolBrandId: Number((document.getElementById("f-p-ty-brand") as HTMLInputElement).value) || null,
@@ -520,15 +547,21 @@ function mountApp() {
   on("productCancelBtn", "click", () => { (document.getElementById("productForm") as HTMLElement).hidden = true; });
   on("productSaveBtn", "click", submitProductForm);
   on("f-p-image-pick-btn", "click", () => document.getElementById("f-p-image-file")!.click());
-  on("f-p-image-file", "change", pickAndUploadProductImage);
-  on("f-p-image-clear-btn", "click", () => setProductImagePreview(""));
+  on("f-p-image-file", "change", pickAndUploadProductImages);
+  on("f-p-image-grid", "click", (e) => {
+    const rm = (e.target as HTMLElement).closest("[data-remove-img]") as HTMLElement | null;
+    if (rm) removeFormImage(+rm.dataset.removeImg!);
+  });
   on("productsList", "click", (e) => {
     const target = e.target as HTMLElement;
+    const gal = target.closest("[data-open-gallery]") as HTMLElement | null; if (gal) { openGallery(+gal.dataset.openGallery!); return; }
     const ed = target.closest("[data-edit-product]") as HTMLElement | null; if (ed) { openProductForm(+ed.dataset.editProduct!); return; }
     const ty = target.closest("[data-ty-upload]") as HTMLElement | null; if (ty) { uploadToTrendyol(+ty.dataset.tyUpload!); return; }
     const del = target.closest("[data-del-product]") as HTMLElement | null;
     if (del && confirm("Bu ürünü silmek istiyor musunuz?")) api("/api/products/" + del.dataset.delProduct, { method: "DELETE" }).then(() => fetchAll()).catch(() => showToast("Silinemedi."));
   });
+  on("galleryCloseBtn", "click", closeGallery);
+  on("galleryModal", "click", (e) => { if (e.target === document.getElementById("galleryModal")) closeGallery(); });
 
   on("saleAddBtn", "click", openSaleForm);
   on("saleCancelBtn", "click", () => { (document.getElementById("saleForm") as HTMLElement).hidden = true; });

@@ -9,6 +9,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const b = await req.json();
   const [current] = await sql`select * from products where id = ${id}`;
   if (!current) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const imageUrls: string[] | undefined = Array.isArray(b.imageUrls) ? b.imageUrls.filter((u: unknown) => typeof u === "string" && u) : undefined;
   try {
     const [row] = await sql`
       update products set
@@ -18,7 +19,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         price = ${b.price ?? current.price},
         stock_quantity = ${b.stockQuantity ?? current.stock_quantity},
         description = ${b.description !== undefined ? b.description : current.description},
-        image_url = ${b.imageUrl !== undefined ? b.imageUrl : current.image_url},
+        image_urls = ${sql.array(imageUrls ?? current.image_urls ?? [])},
         trendyol_category_id = ${b.trendyolCategoryId !== undefined ? b.trendyolCategoryId : current.trendyol_category_id},
         trendyol_brand_id = ${b.trendyolBrandId !== undefined ? b.trendyolBrandId : current.trendyol_brand_id},
         trendyol_barcode = ${b.trendyolBarcode !== undefined ? b.trendyolBarcode : current.trendyol_barcode},

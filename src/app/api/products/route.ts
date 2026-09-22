@@ -15,10 +15,11 @@ export async function POST(req: NextRequest) {
   const b = await req.json();
   const name = (b.name || "").trim();
   if (!name) return NextResponse.json({ error: "Ürün adı gerekli." }, { status: 400 });
+  const imageUrls: string[] = Array.isArray(b.imageUrls) ? b.imageUrls.filter((u: unknown) => typeof u === "string" && u) : [];
   try {
     const [row] = await sql`
-      insert into products (name, category, sku, price, stock_quantity, description, image_url)
-      values (${name}, ${b.category || "Diğer"}, ${b.sku || null}, ${b.price ?? 0}, ${b.stockQuantity ?? 0}, ${b.description || null}, ${b.imageUrl || null})
+      insert into products (name, category, sku, price, stock_quantity, description, image_urls)
+      values (${name}, ${b.category || "Diğer"}, ${b.sku || null}, ${b.price ?? 0}, ${b.stockQuantity ?? 0}, ${b.description || null}, ${sql.array(imageUrls)})
       returning *
     `;
     return NextResponse.json(row, { status: 201 });

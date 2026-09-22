@@ -18,7 +18,7 @@ create table if not exists products (
   price numeric not null default 0,
   stock_quantity numeric not null default 0,
   description text,
-  image_url text,
+  image_urls text[] not null default '{}',   -- birden fazla fotoğraf; ürünler ekranında ilk tıklanınca galeri açılır
   -- Trendyol'a ürün yüklemek için gereken alanlar. Trendyol'un kendi kategori/marka kimlikleri kullanıcı
   -- tarafından Trendyol satıcı panelinden bulunup girilir (bu uygulama Trendyol'un kategori ağacını içermez).
   trendyol_barcode text,
@@ -31,6 +31,17 @@ create table if not exists products (
 );
 create unique index if not exists uq_products_name on products (lower(name));
 create unique index if not exists uq_products_trendyol_barcode on products (trendyol_barcode) where trendyol_barcode is not null;
+-- "create table if not exists" var olan bir tabloya yeni sütun eklemez (yalnızca tablo hiç yoksa çalışır),
+-- bu yüzden image_urls burada ayrıca eklenir.
+alter table products add column if not exists image_urls text[] not null default '{}';
+-- Eski tekil image_url sütunundan geçiş (bir kereliğine): var olan tek görsel, yeni diziye taşınır, sütun kaldırılır.
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_name = 'products' and column_name = 'image_url') then
+    update products set image_urls = array[image_url] where image_url is not null and image_url <> '' and image_urls = '{}';
+    alter table products drop column image_url;
+  end if;
+end $$;
 
 create table if not exists sales (
   id serial primary key,
