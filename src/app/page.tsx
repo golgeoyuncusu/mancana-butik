@@ -42,7 +42,17 @@ const APP_HTML = `
           </div>
           <div class="field"><label>SKU / stok kodu (opsiyonel)</label><input type="text" id="f-p-sku"></div>
           <div class="field"><label>Açıklama (opsiyonel)</label><textarea id="f-p-desc" rows="2"></textarea></div>
-          <div class="field"><label>Görsel URL (opsiyonel)</label><input type="text" id="f-p-image" placeholder="https://…"></div>
+          <div class="field">
+            <label>Ürün fotoğrafı (opsiyonel)</label>
+            <div class="img-picker">
+              <img id="f-p-image-preview" class="img-picker-preview" alt="" hidden>
+              <button type="button" class="btn ghost small" id="f-p-image-pick-btn">Fotoğraf Seç</button>
+              <button type="button" class="btn ghost small danger" id="f-p-image-clear-btn" hidden>Kaldır</button>
+              <span class="img-picker-status" id="f-p-image-status"></span>
+            </div>
+            <input type="file" id="f-p-image-file" accept="image/*" hidden>
+            <input type="hidden" id="f-p-image">
+          </div>
           <details class="ty-fields">
             <summary>Trendyol bilgileri (yüklemek için gerekli, opsiyonel)</summary>
             <div class="field-row">
@@ -290,10 +300,12 @@ function mountApp() {
     el.innerHTML = sorted.map((p) => {
       const low = p.stockQuantity <= 0;
       return "<div class=\"list-item\"><div class=\"li-top\">" +
+        "<div class=\"li-media\">" +
+        (p.imageUrl ? "<img class=\"product-img\" src=\"" + escapeHtml(p.imageUrl) + "\" alt=\"\">" : "") +
         "<div><div class=\"li-title\">" + escapeHtml(p.name) + "</div>" +
         "<div class=\"li-sub\">" + escapeHtml(p.category) + " · " + money(p.price) + " · " + p.stockQuantity + " adet stokta" + (p.sku ? " · " + escapeHtml(p.sku) : "") + "</div>" +
         (p.trendyolSyncError ? "<div class=\"li-sub\" style=\"color:var(--rust)\">" + escapeHtml(p.trendyolSyncError) + "</div>" : "") +
-        "</div>" + (low ? "<span class=\"badge badge-amber\">Stok yok</span>" : "") + "</div>" +
+        "</div></div>" + (low ? "<span class=\"badge badge-amber\">Stok yok</span>" : "") + "</div>" +
         (trendyolStatusHtml(p) ? "<div class=\"trendyol-status\">" + trendyolStatusHtml(p) + "</div>" : "") +
         "<div class=\"li-actions\">" +
         "<button type=\"button\" data-edit-product=\"" + p.id + "\">Düzenle</button>" +
@@ -301,6 +313,34 @@ function mountApp() {
         "<button type=\"button\" class=\"danger\" data-del-product=\"" + p.id + "\">Sil</button>" +
         "</div></div>";
     }).join("");
+  }
+  // Ürün fotoğrafı: telefondan seçilir/çekilir, hemen Vercel Blob'a yüklenir ve genel erişimli URL'si gizli alana
+  // yazılır — kullanıcı bir link girmez, yalnızca dosyayı seçer.
+  function setProductImagePreview(url: string) {
+    const img = document.getElementById("f-p-image-preview") as HTMLImageElement;
+    const clearBtn = document.getElementById("f-p-image-clear-btn") as HTMLElement;
+    (document.getElementById("f-p-image") as HTMLInputElement).value = url;
+    if (url) { img.src = url; img.hidden = false; clearBtn.hidden = false; }
+    else { img.src = ""; img.hidden = true; clearBtn.hidden = true; }
+  }
+  async function pickAndUploadProductImage() {
+    const fileInput = document.getElementById("f-p-image-file") as HTMLInputElement;
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const statusEl = document.getElementById("f-p-image-status") as HTMLElement;
+    statusEl.textContent = "Yükleniyor…";
+    try {
+      const res = await fetch("/api/upload", { method: "POST", headers: { "Content-Type": file.type }, body: file });
+      if (!res.ok) { const b = await res.json().catch(() => null); throw new Error(b?.error || "Yüklenemedi."); }
+      const { url } = await res.json();
+      setProductImagePreview(url);
+      statusEl.textContent = "";
+    } catch (e) {
+      statusEl.textContent = "";
+      showToast(e instanceof Error ? e.message : "Fotoğraf yüklenemedi.");
+    } finally {
+      fileInput.value = "";
+    }
   }
   function openProductForm(id: number | null) {
     editingProduct = id;
@@ -311,7 +351,7 @@ function mountApp() {
     (document.getElementById("f-p-stock") as HTMLInputElement).value = p ? String(p.stockQuantity) : "0";
     (document.getElementById("f-p-sku") as HTMLInputElement).value = p ? p.sku : "";
     (document.getElementById("f-p-desc") as HTMLTextAreaElement).value = p ? p.description : "";
-    (document.getElementById("f-p-image") as HTMLInputElement).value = p ? p.imageUrl : "";
+    setProductImagePreview(p ? p.imageUrl : "");
     (document.getElementById("f-p-ty-barcode") as HTMLInputElement).value = p ? p.trendyolBarcode : "";
     (document.getElementById("f-p-ty-category") as HTMLInputElement).value = p?.trendyolCategoryId ? String(p.trendyolCategoryId) : "";
     (document.getElementById("f-p-ty-brand") as HTMLInputElement).value = p?.trendyolBrandId ? String(p.trendyolBrandId) : "";
@@ -479,6 +519,9 @@ function mountApp() {
   on("productAddBtn", "click", () => openProductForm(null));
   on("productCancelBtn", "click", () => { (document.getElementById("productForm") as HTMLElement).hidden = true; });
   on("productSaveBtn", "click", submitProductForm);
+  on("f-p-image-pick-btn", "click", () => document.getElementById("f-p-image-file")!.click());
+  on("f-p-image-file", "change", pickAndUploadProductImage);
+  on("f-p-image-clear-btn", "click", () => setProductImagePreview(""));
   on("productsList", "click", (e) => {
     const target = e.target as HTMLElement;
     const ed = target.closest("[data-edit-product]") as HTMLElement | null; if (ed) { openProductForm(+ed.dataset.editProduct!); return; }

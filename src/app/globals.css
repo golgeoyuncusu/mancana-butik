@@ -195,11 +195,19 @@ textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px s
 }
 
 /* ================= ÜRÜNLER / SATIŞLAR / TRENDYOL ================= */
+.li-media { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .product-img { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; background: var(--surface-2); flex: none; }
 .trendyol-status { margin-top: 6px; }
 .ty-fields { margin-bottom: 12px; }
 .ty-fields summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--accent); padding: 6px 0; }
 .ty-fields[open] summary { margin-bottom: 6px; }
+
+/* Fotoğraf seçici: telefondan seçilen görsel hemen yüklenip küçük bir önizleme olarak gösterilir. */
+.img-picker { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.img-picker-preview { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: var(--surface-2); flex: none; }
+.img-picker-status { font-size: 12.5px; color: var(--ink-soft); }
+.btn.ghost.danger { color: var(--rust); border-color: var(--rust); }
+.btn.ghost.danger:hover { background: var(--rust-soft); }
 .week-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .week-nav .btn { flex: none; min-width: 46px; min-height: 44px; padding: 0; font-size: 22px; line-height: 1; }
 .week-nav-label { flex: 1; min-width: 0; text-align: center; font-size: 14px; font-weight: 600; }
